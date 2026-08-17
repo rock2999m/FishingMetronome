@@ -1,0 +1,59 @@
+{
+  "name": "タイラバメトロノーム - ルアー釣り巻き速度計算ツール",
+  "short_name": "タイラバメトロノーム",
+  "description": "ルアー釣りの巻き速度をリール回転数で制御するメトロノームアプリ。ボートタイラバにも対応。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#000000",
+  "theme_color": "#FFD700",
+  "screenshots": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%23000'/><circle cx='270' cy='360' r='100' fill='%23FFD700'/></svg>",
+      "sizes": "540x720",
+      "type": "image/svg+xml",
+      "form_factor": "narrow"
+    }
+  ],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><circle cx='96' cy='96' r='90' fill='%23FFD700'/><text x='96' y='120' font-size='80' font-weight='bold' fill='%23000' text-anchor='middle'>M</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><circle cx='96' cy='96' r='90' fill='%23FFD700'/><text x='96' y='120' font-size='80' font-weight='bold' fill='%23000' text-anchor='middle'>M</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["sports", "utilities"],
+  "shortcuts": [
+    {
+      "name": "再生",
+      "short_name": "再生",
+      "description": "メトロノームを再生します",
+      "url": "./?action=play",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><circle cx='48' cy='48' r='45' fill='%23FFD700'/><polygon points='35,25 35,71 65,48' fill='%23000'/></svg>",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

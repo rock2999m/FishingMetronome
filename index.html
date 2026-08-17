@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#000000">
+    <title>タイラバメトロノーム</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><circle cx='96' cy='96' r='90' fill='%23FFD700'/></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><circle cx='96' cy='96' r='90' fill='%23FFD700'/></svg>">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Tipsボタン -->
+    <button id="tipsBtn" class="tips-btn">i</button>
+
+    <!-- 設定ボタン -->
+    <button id="settingsBtn" class="settings-btn">⚙️</button>
+
+    <div class="container">
+        <!-- メイン表示 -->
+        <div class="main-display">
+            <div class="rpm-display">
+                <span id="currentRpm">60</span>
+                <span class="unit">RPM</span>
+            </div>
+            <div class="lure-speed-display">
+                <div class="label">ルアー移動速度</div>
+                <span id="lureSpeed">0.0</span>
+                <span class="unit">m/s</span>
+            </div>
+            <div class="speed-indicator">
+                <div class="indicator-label">
+                    <span id="indicatorMinLabel">0.2</span>
+                    <span id="indicatorMaxLabel">3.0</span>
+                </div>
+                <div class="indicator-bar">
+                    <div id="indicatorMarker" class="indicator-marker"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 入力セクション -->
+        <div class="input-section">
+            <div class="input-row">
+                <div class="input-group">
+                    <label for="reelRetrieve">巻き取り量 (cm)</label>
+                    <input type="number" id="reelRetrieve" value="75" min="10" max="200" step="5">
+                </div>
+                <div class="input-group">
+                    <label for="targetSpeed">目標速度 (m/s)</label>
+                    <input type="number" id="targetSpeed" value="1.0" min="0" max="5" step="0.1">
+                </div>
+            </div>
+            <div class="input-row-boat">
+                <div class="input-group">
+                    <label for="boatSpeed">船速 (km/h)</label>
+                    <div class="boat-speed-control">
+                        <button id="boatSpeedDecreaseBtn" class="btn btn-speed-control">-</button>
+                        <input type="number" id="boatSpeed" value="0" min="0" max="18">
+                        <button id="boatSpeedIncreaseBtn" class="btn btn-speed-control">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- スライダー -->
+        <div class="slider-section">
+            <input type="range" id="rpmSlider" min="30" max="200" value="60" class="rpm-slider">
+            <div class="slider-labels">
+                <span>30 RPM</span>
+                <span>200 RPM</span>
+            </div>
+        </div>
+
+        <!-- セットボタン -->
+        <div class="set-button-section">
+            <button id="setBtn" class="btn btn-set">セット</button>
+        </div>
+
+        <!-- コントロールボタン -->
+        <div class="control-buttons">
+            <button id="decreaseBtn" class="btn btn-secondary">-5 RPM</button>
+            <button id="playBtn" class="btn btn-primary">再生</button>
+            <button id="increaseBtn" class="btn btn-secondary">+5 RPM</button>
+        </div>
+    </div>
+
+    <!-- フッター -->
+    <footer class="footer">
+        <span id="versionInfo">タイラバメトロノーム v1.0.0</span>
+    </footer>
+
+    <!-- Tipsモーダル -->
+    <div id="tipsModal" class="modal" style="display: none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Tips</h2>
+                <button id="closeTipsBtn" class="modal-close">✕</button>
+            </div>
+            <div class="modal-tab-content" style="display: block;">
+                <table class="tips-table">
+                    <thead>
+                        <tr>
+                            <th>船速</th>
+                            <th>巻き速度レンジ</th>
+                            <th>RPM (83cm/回転)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>0.5 km/h</td>
+                            <td>0.66~1.36 m/s</td>
+                            <td>約48~98 rpm</td>
+                        </tr>
+                        <tr>
+                            <td>1.0 km/h</td>
+                            <td>0.52~1.22 m/s</td>
+                            <td>約38~88 rpm</td>
+                        </tr>
+                        <tr>
+                            <td>1.6 km/h</td>
+                            <td>0.36~1.06 m/s</td>
+                            <td>約26~76 rpm</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <audio id="audioElement" style="display: none;"></audio>
+
+    <!-- 設定モーダル -->
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>設定</h2>
+                <button id="closeSettingsBtn" class="modal-close">✕</button>
+            </div>
+
+            <!-- タブ -->
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-tab="presets">プリセット</button>
+                <button class="modal-tab" data-tab="indicator">インジケーター</button>
+            </div>
+
+            <!-- プリセットタブ -->
+            <div id="presetsTab" class="modal-tab-content active">
+                <div class="preset-input-group">
+                    <input type="text" id="presetName" placeholder="プリセット名を入力" maxlength="20">
+                    <button id="savePresetBtn" class="btn btn-tertiary">保存</button>
+                </div>
+                <div id="presetList" class="preset-list"></div>
+            </div>
+
+            <!-- インジケーター設定タブ -->
+            <div id="indicatorTab" class="modal-tab-content">
+                <div class="indicator-settings">
+                    <div class="setting-group">
+                        <label for="indicatorMin">最小値 (m/s)</label>
+                        <input type="number" id="indicatorMin" value="0.2" min="0" max="2" step="0.1">
+                    </div>
+                    <div class="setting-group">
+                        <label for="indicatorMax">最大値 (m/s)</label>
+                        <input type="number" id="indicatorMax" value="3.0" min="1" max="5" step="0.1">
+                    </div>
+                    <button id="indicatorResetBtn" class="btn btn-secondary">デフォルトに戻す</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Service Workerの登録
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js').catch(err => {
+                console.warn('Service Worker registration failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>
