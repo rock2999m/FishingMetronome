@@ -386,7 +386,6 @@ input,
     letter-spacing: 1px;
     transition: all 0.2s ease;
     -webkit-tap-highlight-color: transparent;
-    active: 0.9;
 }
 
 .btn-primary {
