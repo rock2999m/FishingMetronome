@@ -1,9 +1,9 @@
 {
-  "id": "fishing-metronome",
+  "id": "/fishing-metronome/v1.1.0",
   "name": "Fishing Metronome",
   "short_name": "Fishing Metronome",
   "description": "ルアー釣りの巻き速度をリール回転数で制御するメトロノームアプリ。ボートタイラバにも対応。",
-  "start_url": "./",
+  "start_url": "./index.html?app=fishing-metronome&v=1.1.0",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
@@ -37,7 +37,7 @@
       "name": "再生",
       "short_name": "再生",
       "description": "メトロノームを再生します",
-      "url": "./?action=play",
+      "url": "./index.html?app=fishing-metronome&action=play&v=1.1.0",
       "icons": [
         {
           "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><circle cx='48' cy='48' r='45' fill='%23FFD700'/><polygon points='35,25 35,71 65,48' fill='%23000'/></svg>",
