@@ -338,7 +338,7 @@ class TiravaMetronome {
 
     loadAudioSettings() {
         const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20,"audioEngine":"webaudio","toneVariant":"sharp"}');
-        this.volumeLevel = Math.max(20, Math.min(100, parseInt(settings.volumeLevel, 10) || 20));
+        this.volumeLevel = Math.max(20, Math.min(150, parseInt(settings.volumeLevel, 10) || 20));
         this.audioEngine = settings.audioEngine === 'htmlaudio' ? 'htmlaudio' : 'webaudio';
         const allowedTones = ['sharp', 'soft', 'beep', 'wood', 'bell'];
         this.toneVariant = allowedTones.includes(settings.toneVariant) ? settings.toneVariant : 'sharp';
@@ -385,20 +385,21 @@ class TiravaMetronome {
     }
 
     getVolumeRatio() {
-        const ratio = (this.volumeLevel - 20) / 80;
+        const ratio = (this.volumeLevel - 20) / 130;
         return Math.max(0, Math.min(1, ratio));
     }
 
     getVolumeMultiplier() {
-        // 歪み防止のため、WebAudio側は最大1.0に制限
+        // WebAudio側は最大1.5まで許容（元波形にヘッドルームあり）
         const ratio = this.getVolumeRatio();
         const perceptual = Math.pow(ratio, 1.6);
-        return 0.12 + (0.88 * perceptual);
+        return 0.12 + (1.38 * perceptual);
     }
 
     getHtmlAudioVolume() {
-        // HTMLAudio側も同じカーブで統一
-        const ratio = this.getVolumeRatio();
+        // HTMLAudio要素は仕様上1.0が上限
+        const cappedLevel = Math.min(this.volumeLevel, 100);
+        const ratio = (cappedLevel - 20) / 80;
         const perceptual = Math.pow(ratio, 1.6);
         return 0.12 + (0.88 * perceptual);
     }
