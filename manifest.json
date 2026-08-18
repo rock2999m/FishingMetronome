@@ -1,6 +1,7 @@
 {
-  "name": "タイラバメトロノーム - ルアー釣り巻き速度計算ツール",
-  "short_name": "タイラバメトロノーム",
+  "id": "fishing-metronome",
+  "name": "Fishing Metronome",
+  "short_name": "Fishing Metronome",
   "description": "ルアー釣りの巻き速度をリール回転数で制御するメトロノームアプリ。ボートタイラバにも対応。",
   "start_url": "./",
   "scope": "./",
