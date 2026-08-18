@@ -170,6 +170,13 @@
                         <label for="volumeLevel">音量 (<span id="volumeLabel">20</span>%)</label>
                         <input type="range" id="volumeLevel" min="20" max="100" step="1" value="20">
                     </div>
+                    <div class="setting-group">
+                        <label for="audioEngine">音声エンジン</label>
+                        <select id="audioEngine">
+                            <option value="webaudio">WebAudio (現行)</option>
+                            <option value="htmlaudio">HTMLAudio (検証)</option>
+                        </select>
+                    </div>
                     <button id="indicatorResetBtn" class="btn btn-secondary">デフォルトに戻す</button>
                 </div>
             </div>

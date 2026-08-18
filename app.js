@@ -13,13 +13,15 @@ class TiravaMetronome {
         this.indicatorMinSpeed = 0.2; // m/s
         this.indicatorMaxSpeed = 3.0; // m/s
         this.volumeLevel = 20; // 20%を現行基準
+        this.audioEngine = 'webaudio'; // webaudio | htmlaudio
         
         // Web Audio API
         this.audioContext = null;
         this.mediaStreamDestination = null;
         this.audioElement = null;
         this.masterGain = null;
-        this.activeOscillators = new Set();
+        this.clickSource = null;
+        this.clickLoopUrl = null;
         
         // スケジューラ
         this.nextNoteTime = 0;
@@ -59,6 +61,7 @@ class TiravaMetronome {
             indicatorResetBtn: document.getElementById('indicatorResetBtn'),
             volumeLevel: document.getElementById('volumeLevel'),
             volumeLabel: document.getElementById('volumeLabel'),
+            audioEngine: document.getElementById('audioEngine'),
             tipsBtn: document.getElementById('tipsBtn'),
             tipsModal: document.getElementById('tipsModal'),
             closeTipsBtn: document.getElementById('closeTipsBtn')
@@ -98,12 +101,10 @@ class TiravaMetronome {
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.mediaStreamDestination);
             this.applyVolumeSetting();
-            
-            // MediaStreamを<audio>要素に接続
-            this.elements.audioElement.srcObject = this.mediaStreamDestination.stream;
-            this.elements.audioElement.play().catch(err => {
-                console.warn('Audio play failed:', err);
-            });
+
+            if (this.audioEngine === 'webaudio') {
+                this.attachMediaStream();
+            }
 
             // Media Session APIの設定
             this.setupMediaSession();
@@ -182,6 +183,11 @@ class TiravaMetronome {
             this.currentRpm = parseInt(e.target.value);
             this.updateDisplay();
             if (this.isPlaying) {
+                if (this.audioEngine === 'htmlaudio') {
+                    this.elements.audioElement.playbackRate = this.currentRpm / 60;
+                } else {
+                    this.startClickLoop();
+                }
                 this.updateMediaSession();
             }
         });
@@ -258,6 +264,15 @@ class TiravaMetronome {
             this.saveAudioSettings();
             this.elements.volumeLabel.textContent = this.volumeLevel;
         });
+
+        this.elements.audioEngine.addEventListener('change', (e) => {
+            this.audioEngine = e.target.value;
+            this.saveAudioSettings();
+            this.applyVolumeSetting();
+            if (this.isPlaying) {
+                this.startActiveEngine();
+            }
+        });
     }
 
     openSettings() {
@@ -308,15 +323,20 @@ class TiravaMetronome {
     }
 
     loadAudioSettings() {
-        const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20}');
+        const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20,"audioEngine":"webaudio"}');
         this.volumeLevel = Math.max(20, Math.min(100, parseInt(settings.volumeLevel, 10) || 20));
+        this.audioEngine = settings.audioEngine === 'htmlaudio' ? 'htmlaudio' : 'webaudio';
         this.elements.volumeLevel.value = this.volumeLevel;
         this.elements.volumeLabel.textContent = this.volumeLevel;
+        this.elements.audioEngine.value = this.audioEngine;
         this.applyVolumeSetting();
     }
 
     saveAudioSettings() {
-        localStorage.setItem('audioSettings', JSON.stringify({ volumeLevel: this.volumeLevel }));
+        localStorage.setItem('audioSettings', JSON.stringify({
+            volumeLevel: this.volumeLevel,
+            audioEngine: this.audioEngine
+        }));
     }
 
     getVolumeMultiplier() {
@@ -324,9 +344,20 @@ class TiravaMetronome {
         return 1 + ((this.volumeLevel - 20) * 1.5) / 80;
     }
 
+    getHtmlAudioVolume() {
+        // 20%で0.4、100%で1.0（2.5倍相当）
+        return 0.4 + ((this.volumeLevel - 20) * 0.6) / 80;
+    }
+
     applyVolumeSetting() {
         if (this.masterGain) {
             this.masterGain.gain.value = this.getVolumeMultiplier();
+        }
+
+        if (this.audioEngine === 'htmlaudio') {
+            this.elements.audioElement.volume = this.getHtmlAudioVolume();
+        } else {
+            this.elements.audioElement.volume = 1.0;
         }
     }
 
@@ -375,15 +406,14 @@ class TiravaMetronome {
         }
 
         this.isPlaying = true;
-        this.nextNoteTime = this.audioContext.currentTime;
         this.elements.playBtn.textContent = '停止';
         this.elements.playBtn.style.backgroundColor = '#FF6B6B';
         
         // 入力フィールドを無効化
         this.disableInputs(true);
         
-        // スケジューラ開始
-        this.scheduler();
+        // エンジン別に再生開始
+        this.startActiveEngine();
         
         this.updateStatus('再生中...');
         this.updateMediaSession();
@@ -397,21 +427,8 @@ class TiravaMetronome {
         this.elements.playBtn.textContent = '再生';
         this.elements.playBtn.style.backgroundColor = '#FFD700';
 
-        // スケジューラ停止
-        if (this.schedulerID) {
-            clearTimeout(this.schedulerID);
-            this.schedulerID = null;
-        }
-
-        // 余韻対策: 予約済み発音を即停止
-        this.activeOscillators.forEach(osc => {
-            try {
-                osc.stop(0);
-            } catch (err) {
-                console.warn('Osc stop failed:', err);
-            }
-        });
-        this.activeOscillators.clear();
+        // エンジン別に停止
+        this.stopActiveEngine();
 
         // 入力フィールドを有効化
         this.disableInputs(false);
@@ -421,37 +438,172 @@ class TiravaMetronome {
     }
 
     // ========================================
-    // オーディオスケジューリング
+    // 音声エンジン
     // ========================================
-    scheduler() {
-        // スケジュール可能な全てのノートをスケジュール
-        while (this.nextNoteTime < this.audioContext.currentTime + this.scheduleAheadTime) {
-            this.scheduleNote(this.nextNoteTime);
-            this.advance();
-        }
-
-        if (this.isPlaying) {
-            this.schedulerID = setTimeout(() => this.scheduler(), this.lookAhead);
+    startActiveEngine() {
+        if (this.audioEngine === 'htmlaudio') {
+            this.startHtmlAudioLoop();
+        } else {
+            this.startClickLoop();
         }
     }
 
-    advance() {
-        const secondsPerBeat = 60.0 / this.currentRpm;
-        this.nextNoteTime += secondsPerBeat;
+    stopActiveEngine() {
+        this.stopClickLoop();
+        this.stopHtmlAudioLoop();
     }
 
-    scheduleNote(time) {
-        // 短く明瞭なクリック音
-        const osc = this.audioContext.createOscillator();
-        osc.connect(this.masterGain);
+    attachMediaStream() {
+        if (!this.mediaStreamDestination) return;
 
-        osc.frequency.value = 1600;
-        osc.type = 'square';
-        this.activeOscillators.add(osc);
-        osc.onended = () => this.activeOscillators.delete(osc);
+        const audio = this.elements.audioElement;
+        if (audio.srcObject !== this.mediaStreamDestination.stream) {
+            audio.pause();
+            audio.removeAttribute('src');
+            audio.srcObject = this.mediaStreamDestination.stream;
+        }
 
-        osc.start(time);
-        osc.stop(time + 0.03);
+        audio.loop = false;
+        audio.play().catch(err => {
+            console.warn('Audio play failed:', err);
+        });
+    }
+
+    detachMediaStream() {
+        const audio = this.elements.audioElement;
+        if (audio.srcObject) {
+            audio.pause();
+            audio.srcObject = null;
+        }
+    }
+
+    createClickLoopUrl() {
+        const sampleRate = 44100;
+        const durationSec = 1.0; // 60RPM基準で1秒周期
+        const totalSamples = Math.floor(sampleRate * durationSec);
+        const clickSamples = Math.floor(sampleRate * 0.008); // 8ms
+        const freq = 1800;
+
+        const pcm = new Int16Array(totalSamples);
+        for (let i = 0; i < clickSamples; i++) {
+            const phase = (2 * Math.PI * freq * i) / sampleRate;
+            pcm[i] = Math.sin(phase) >= 0 ? 28000 : -28000;
+        }
+
+        const bytesPerSample = 2;
+        const dataSize = pcm.length * bytesPerSample;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+
+        const writeString = (offset, str) => {
+            for (let i = 0; i < str.length; i++) {
+                view.setUint8(offset + i, str.charCodeAt(i));
+            }
+        };
+
+        writeString(0, 'RIFF');
+        view.setUint32(4, 36 + dataSize, true);
+        writeString(8, 'WAVE');
+        writeString(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * bytesPerSample, true);
+        view.setUint16(32, bytesPerSample, true);
+        view.setUint16(34, 16, true);
+        writeString(36, 'data');
+        view.setUint32(40, dataSize, true);
+
+        let offset = 44;
+        for (let i = 0; i < pcm.length; i++, offset += 2) {
+            view.setInt16(offset, pcm[i], true);
+        }
+
+        const blob = new Blob([buffer], { type: 'audio/wav' });
+        return URL.createObjectURL(blob);
+    }
+
+    createClickBuffer(rpm) {
+        const sampleRate = this.audioContext.sampleRate;
+        const periodSec = 60.0 / rpm;
+        const bufferLength = Math.max(1, Math.floor(sampleRate * periodSec));
+        const buffer = this.audioContext.createBuffer(1, bufferLength, sampleRate);
+        const data = buffer.getChannelData(0);
+
+        // クリック長: 8ms（短く明瞭）
+        const clickSamples = Math.min(bufferLength, Math.floor(sampleRate * 0.008));
+        const freq = 1800;
+        for (let i = 0; i < clickSamples; i++) {
+            const phase = (2 * Math.PI * freq * i) / sampleRate;
+            data[i] = Math.sin(phase) >= 0 ? 1 : -1;
+        }
+
+        return buffer;
+    }
+
+    startClickLoop() {
+        if (!this.audioContext || !this.masterGain) return;
+
+        this.attachMediaStream();
+
+        this.stopClickLoop();
+
+        const source = this.audioContext.createBufferSource();
+        source.buffer = this.createClickBuffer(this.currentRpm);
+        source.loop = true;
+        source.connect(this.masterGain);
+        source.onended = () => {
+            if (this.clickSource === source) {
+                this.clickSource = null;
+            }
+        };
+
+        source.start();
+        this.clickSource = source;
+    }
+
+    stopClickLoop() {
+        if (!this.clickSource) return;
+        try {
+            this.clickSource.stop(0);
+        } catch (err) {
+            console.warn('Click source stop failed:', err);
+        }
+        this.clickSource.disconnect();
+        this.clickSource = null;
+    }
+
+    startHtmlAudioLoop() {
+        const audio = this.elements.audioElement;
+        this.stopClickLoop();
+        this.detachMediaStream();
+
+        if (!this.clickLoopUrl) {
+            this.clickLoopUrl = this.createClickLoopUrl();
+        }
+
+        if (audio.src !== this.clickLoopUrl) {
+            audio.src = this.clickLoopUrl;
+        }
+
+        audio.loop = true;
+        audio.playbackRate = this.currentRpm / 60;
+        audio.currentTime = 0;
+        this.applyVolumeSetting();
+        audio.play().catch(err => {
+            console.warn('HTMLAudio loop play failed:', err);
+        });
+    }
+
+    stopHtmlAudioLoop() {
+        if (this.audioEngine !== 'htmlaudio' && this.elements.audioElement.srcObject) return;
+
+        const audio = this.elements.audioElement;
+        if (!audio.paused || audio.currentTime > 0) {
+            audio.pause();
+            audio.currentTime = 0;
+        }
     }
 
     async resumeAudioIfNeeded() {
@@ -461,7 +613,15 @@ class TiravaMetronome {
             if (this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
             }
-            await this.elements.audioElement.play();
+            if (this.audioEngine === 'htmlaudio') {
+                this.elements.audioElement.playbackRate = this.currentRpm / 60;
+                await this.elements.audioElement.play();
+            } else {
+                await this.elements.audioElement.play();
+                if (!this.clickSource) {
+                    this.startClickLoop();
+                }
+            }
         } catch (err) {
             console.warn('Audio resume after sleep failed:', err);
         }
@@ -476,6 +636,11 @@ class TiravaMetronome {
         this.updateDisplay();
         
         if (this.isPlaying) {
+            if (this.audioEngine === 'htmlaudio') {
+                this.elements.audioElement.playbackRate = this.currentRpm / 60;
+            } else {
+                this.startClickLoop();
+            }
             this.updateMediaSession();
         }
     }
@@ -681,6 +846,10 @@ window.addEventListener('beforeunload', () => {
     if (window.metronome) {
         window.metronome.stop();
         window.metronome.releaseWakeLock();
+        if (window.metronome.clickLoopUrl) {
+            URL.revokeObjectURL(window.metronome.clickLoopUrl);
+            window.metronome.clickLoopUrl = null;
+        }
     }
 });
 

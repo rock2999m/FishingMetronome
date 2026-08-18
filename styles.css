@@ -729,10 +729,31 @@ input,
     text-align: center;
 }
 
+.setting-group select {
+    padding: 10px;
+    background-color: #222222;
+    border: 1px solid #FFD700;
+    color: #FFD700;
+    border-radius: 4px;
+    font-size: 14px;
+    text-align: center;
+}
+
 .setting-group input:focus {
     outline: none;
     border-color: #FFED4E;
     box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+}
+
+.setting-group select:focus {
+    outline: none;
+    border-color: #FFED4E;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+}
+
+.setting-group input[type="range"] {
+    padding: 0;
+    height: 30px;
 }
 
 .indicator-settings {
