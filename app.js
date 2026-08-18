@@ -12,16 +12,19 @@ class TiravaMetronome {
         this.targetSpeed = 1.0; // m/s
         this.indicatorMinSpeed = 0.2; // m/s
         this.indicatorMaxSpeed = 3.0; // m/s
+        this.volumeLevel = 20; // 20%を現行基準
         
         // Web Audio API
         this.audioContext = null;
         this.mediaStreamDestination = null;
         this.audioElement = null;
+        this.masterGain = null;
+        this.activeOscillators = new Set();
         
         // スケジューラ
         this.nextNoteTime = 0;
-        this.scheduleAheadTime = 0.1; // 100ms前にスケジュール
-        this.lookAhead = 25.0; // 25msごとにチェック
+        this.scheduleAheadTime = 0.03; // 30ms前にスケジュール
+        this.lookAhead = 20.0; // 20msごとにチェック
         this.schedulerID = null;
         
         // Wake Lock
@@ -54,6 +57,8 @@ class TiravaMetronome {
             indicatorMin: document.getElementById('indicatorMin'),
             indicatorMax: document.getElementById('indicatorMax'),
             indicatorResetBtn: document.getElementById('indicatorResetBtn'),
+            volumeLevel: document.getElementById('volumeLevel'),
+            volumeLabel: document.getElementById('volumeLabel'),
             tipsBtn: document.getElementById('tipsBtn'),
             tipsModal: document.getElementById('tipsModal'),
             closeTipsBtn: document.getElementById('closeTipsBtn')
@@ -69,8 +74,13 @@ class TiravaMetronome {
         this.attachTipsListeners();
         this.loadPresets();
         this.loadIndicatorSettings();
+        this.loadAudioSettings();
         this.updateDisplay();
         this.requestWakeLock();
+
+        // Safari復帰時の再生復旧
+        window.addEventListener('pageshow', () => this.resumeAudioIfNeeded());
+        window.addEventListener('focus', () => this.resumeAudioIfNeeded());
     }
 
     // ========================================
@@ -85,6 +95,9 @@ class TiravaMetronome {
 
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.mediaStreamDestination = this.audioContext.createMediaStreamDestination();
+            this.masterGain = this.audioContext.createGain();
+            this.masterGain.connect(this.mediaStreamDestination);
+            this.applyVolumeSetting();
             
             // MediaStreamを<audio>要素に接続
             this.elements.audioElement.srcObject = this.mediaStreamDestination.stream;
@@ -238,6 +251,13 @@ class TiravaMetronome {
         });
         
         this.elements.indicatorResetBtn.addEventListener('click', () => this.resetIndicatorSettings());
+
+        this.elements.volumeLevel.addEventListener('input', (e) => {
+            this.volumeLevel = parseInt(e.target.value, 10) || 20;
+            this.applyVolumeSetting();
+            this.saveAudioSettings();
+            this.elements.volumeLabel.textContent = this.volumeLevel;
+        });
     }
 
     openSettings() {
@@ -285,6 +305,29 @@ class TiravaMetronome {
         this.elements.indicatorMin.value = 0.2;
         this.elements.indicatorMax.value = 3.0;
         this.saveIndicatorSettings();
+    }
+
+    loadAudioSettings() {
+        const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20}');
+        this.volumeLevel = Math.max(20, Math.min(100, parseInt(settings.volumeLevel, 10) || 20));
+        this.elements.volumeLevel.value = this.volumeLevel;
+        this.elements.volumeLabel.textContent = this.volumeLevel;
+        this.applyVolumeSetting();
+    }
+
+    saveAudioSettings() {
+        localStorage.setItem('audioSettings', JSON.stringify({ volumeLevel: this.volumeLevel }));
+    }
+
+    getVolumeMultiplier() {
+        // 20%が基準1.0倍、100%が2.5倍
+        return 1 + ((this.volumeLevel - 20) * 1.5) / 80;
+    }
+
+    applyVolumeSetting() {
+        if (this.masterGain) {
+            this.masterGain.gain.value = this.getVolumeMultiplier();
+        }
     }
 
     attachTipsListeners() {
@@ -360,6 +403,16 @@ class TiravaMetronome {
             this.schedulerID = null;
         }
 
+        // 余韻対策: 予約済み発音を即停止
+        this.activeOscillators.forEach(osc => {
+            try {
+                osc.stop(0);
+            } catch (err) {
+                console.warn('Osc stop failed:', err);
+            }
+        });
+        this.activeOscillators.clear();
+
         // 入力フィールドを有効化
         this.disableInputs(false);
 
@@ -388,22 +441,30 @@ class TiravaMetronome {
     }
 
     scheduleNote(time) {
-        // クリック音の合成
+        // 短く明瞭なクリック音
         const osc = this.audioContext.createOscillator();
-        const env = this.audioContext.createGain();
-        
-        osc.connect(env);
-        env.connect(this.mediaStreamDestination);
+        osc.connect(this.masterGain);
 
-        // 短いクリック音
-        osc.frequency.value = 800;
-        osc.type = 'sine';
-
-        env.gain.setValueAtTime(0.3, time);
-        env.gain.exponentialRampToValueAtTime(0.01, time + 0.1);
+        osc.frequency.value = 1600;
+        osc.type = 'square';
+        this.activeOscillators.add(osc);
+        osc.onended = () => this.activeOscillators.delete(osc);
 
         osc.start(time);
-        osc.stop(time + 0.1);
+        osc.stop(time + 0.03);
+    }
+
+    async resumeAudioIfNeeded() {
+        if (!this.isPlaying || !this.audioContext) return;
+
+        try {
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+            await this.elements.audioElement.play();
+        } catch (err) {
+            console.warn('Audio resume after sleep failed:', err);
+        }
     }
 
     // ========================================
@@ -628,5 +689,7 @@ document.addEventListener('visibilitychange', () => {
     if (document.hidden && window.metronome && window.metronome.isPlaying) {
         // ページが非表示になったが、Audio要素は継続再生される
         console.log('Page hidden, audio continues playing');
+    } else if (!document.hidden && window.metronome) {
+        window.metronome.resumeAudioIfNeeded();
     }
 });
