@@ -88,7 +88,7 @@
 
     <!-- フッター -->
     <footer class="footer">
-        <span id="versionInfo">Fishing Metronome v1.1.0</span>
+        <span id="versionInfo">Fishing Metronome v2.0.0</span>
     </footer>
 
     <!-- Tipsモーダル -->
@@ -175,6 +175,16 @@
                         <select id="audioEngine">
                             <option value="webaudio">WebAudio (現行)</option>
                             <option value="htmlaudio">HTMLAudio (検証)</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label for="toneVariant">音色</label>
+                        <select id="toneVariant">
+                            <option value="sharp">シャープ</option>
+                            <option value="soft">ソフト</option>
+                            <option value="beep">ビープ</option>
+                            <option value="wood">ウッド</option>
+                            <option value="bell">ベル</option>
                         </select>
                     </div>
                     <button id="indicatorResetBtn" class="btn btn-secondary">デフォルトに戻す</button>

@@ -2,7 +2,7 @@
 // Service Worker - オフラインキャッシング対応
 // ========================================
 
-const CACHE_VERSION = 'tirava-v1.0.0';
+const CACHE_VERSION = 'tirava-v2.0.0';
 const CACHE_NAME = `${CACHE_VERSION}-assets`;
 
 // キャッシュ対象ファイル

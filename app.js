@@ -14,6 +14,7 @@ class TiravaMetronome {
         this.indicatorMaxSpeed = 3.0; // m/s
         this.volumeLevel = 20; // 20%を現行基準
         this.audioEngine = 'webaudio'; // webaudio | htmlaudio
+        this.toneVariant = 'sharp'; // sharp | soft | beep | wood | bell
         
         // Web Audio API
         this.audioContext = null;
@@ -62,6 +63,7 @@ class TiravaMetronome {
             volumeLevel: document.getElementById('volumeLevel'),
             volumeLabel: document.getElementById('volumeLabel'),
             audioEngine: document.getElementById('audioEngine'),
+            toneVariant: document.getElementById('toneVariant'),
             tipsBtn: document.getElementById('tipsBtn'),
             tipsModal: document.getElementById('tipsModal'),
             closeTipsBtn: document.getElementById('closeTipsBtn')
@@ -273,6 +275,18 @@ class TiravaMetronome {
                 this.startActiveEngine();
             }
         });
+
+        this.elements.toneVariant.addEventListener('change', (e) => {
+            this.toneVariant = e.target.value;
+            if (this.clickLoopUrl) {
+                URL.revokeObjectURL(this.clickLoopUrl);
+                this.clickLoopUrl = null;
+            }
+            this.saveAudioSettings();
+            if (this.isPlaying) {
+                this.startActiveEngine();
+            }
+        });
     }
 
     openSettings() {
@@ -323,20 +337,51 @@ class TiravaMetronome {
     }
 
     loadAudioSettings() {
-        const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20,"audioEngine":"webaudio"}');
+        const settings = JSON.parse(localStorage.getItem('audioSettings') || '{"volumeLevel":20,"audioEngine":"webaudio","toneVariant":"sharp"}');
         this.volumeLevel = Math.max(20, Math.min(100, parseInt(settings.volumeLevel, 10) || 20));
         this.audioEngine = settings.audioEngine === 'htmlaudio' ? 'htmlaudio' : 'webaudio';
+        const allowedTones = ['sharp', 'soft', 'beep', 'wood', 'bell'];
+        this.toneVariant = allowedTones.includes(settings.toneVariant) ? settings.toneVariant : 'sharp';
         this.elements.volumeLevel.value = this.volumeLevel;
         this.elements.volumeLabel.textContent = this.volumeLevel;
         this.elements.audioEngine.value = this.audioEngine;
+        this.elements.toneVariant.value = this.toneVariant;
         this.applyVolumeSetting();
     }
 
     saveAudioSettings() {
         localStorage.setItem('audioSettings', JSON.stringify({
             volumeLevel: this.volumeLevel,
-            audioEngine: this.audioEngine
+            audioEngine: this.audioEngine,
+            toneVariant: this.toneVariant
         }));
+    }
+
+    getToneProfile() {
+        switch (this.toneVariant) {
+            case 'soft':
+                return { freq: 1200, clickSec: 0.012, wave: 'sine' };
+            case 'beep':
+                return { freq: 2000, clickSec: 0.006, wave: 'square' };
+            case 'wood':
+                return { freq: 900, clickSec: 0.010, wave: 'triangle' };
+            case 'bell':
+                return { freq: 1500, clickSec: 0.014, wave: 'sine-bell' };
+            case 'sharp':
+            default:
+                return { freq: 1800, clickSec: 0.008, wave: 'square' };
+        }
+    }
+
+    getWaveSample(wave, phase) {
+        if (wave === 'sine') return Math.sin(phase);
+        if (wave === 'triangle') return (2 / Math.PI) * Math.asin(Math.sin(phase));
+        if (wave === 'sine-bell') {
+            const s1 = Math.sin(phase);
+            const s2 = Math.sin(phase * 2);
+            return (s1 * 0.75) + (s2 * 0.25);
+        }
+        return Math.sin(phase) >= 0 ? 1 : -1;
     }
 
     getVolumeMultiplier() {
@@ -481,14 +526,31 @@ class TiravaMetronome {
         const sampleRate = 44100;
         const durationSec = 1.0; // 60RPM基準で1秒周期
         const totalSamples = Math.floor(sampleRate * durationSec);
-        const clickSamples = Math.floor(sampleRate * 0.008); // 8ms
-        const freq = 1800;
+        const tone = this.getToneProfile();
+        const clickSamples = Math.floor(sampleRate * tone.clickSec);
+        const freq = tone.freq;
+        const fadeSamples = Math.max(8, Math.floor(sampleRate * 0.0005)); // 0.5ms
 
         const pcm = new Int16Array(totalSamples);
         for (let i = 0; i < clickSamples; i++) {
             const phase = (2 * Math.PI * freq * i) / sampleRate;
-            pcm[i] = Math.sin(phase) >= 0 ? 28000 : -28000;
+            const sample = this.getWaveSample(tone.wave, phase);
+
+            // クリック開始/終了の不連続を抑えてループ境界の音色変化を軽減
+            let env = 1;
+            if (i < fadeSamples) {
+                env = i / fadeSamples;
+            } else if (i >= clickSamples - fadeSamples) {
+                env = (clickSamples - i - 1) / fadeSamples;
+            }
+
+            pcm[i] = Math.max(-28000, Math.min(28000, Math.round(sample * env * 28000)));
         }
+
+        // 先頭・末尾をゼロに固定してループ接続時の段差を最小化
+        pcm[0] = 0;
+        pcm[clickSamples - 1] = 0;
+        pcm[totalSamples - 1] = 0;
 
         const bytesPerSample = 2;
         const dataSize = pcm.length * bytesPerSample;
@@ -531,12 +593,19 @@ class TiravaMetronome {
         const buffer = this.audioContext.createBuffer(1, bufferLength, sampleRate);
         const data = buffer.getChannelData(0);
 
-        // クリック長: 8ms（短く明瞭）
-        const clickSamples = Math.min(bufferLength, Math.floor(sampleRate * 0.008));
-        const freq = 1800;
+        const tone = this.getToneProfile();
+        const clickSamples = Math.min(bufferLength, Math.floor(sampleRate * tone.clickSec));
+        const freq = tone.freq;
+        const fadeSamples = Math.max(8, Math.floor(sampleRate * 0.0005));
         for (let i = 0; i < clickSamples; i++) {
             const phase = (2 * Math.PI * freq * i) / sampleRate;
-            data[i] = Math.sin(phase) >= 0 ? 1 : -1;
+            let env = 1;
+            if (i < fadeSamples) {
+                env = i / fadeSamples;
+            } else if (i >= clickSamples - fadeSamples) {
+                env = (clickSamples - i - 1) / fadeSamples;
+            }
+            data[i] = this.getWaveSample(tone.wave, phase) * env;
         }
 
         return buffer;
