@@ -384,14 +384,23 @@ class TiravaMetronome {
         return Math.sin(phase) >= 0 ? 1 : -1;
     }
 
+    getVolumeRatio() {
+        const ratio = (this.volumeLevel - 20) / 80;
+        return Math.max(0, Math.min(1, ratio));
+    }
+
     getVolumeMultiplier() {
-        // 20%が基準1.0倍、100%が2.5倍
-        return 1 + ((this.volumeLevel - 20) * 1.5) / 80;
+        // 歪み防止のため、WebAudio側は最大1.0に制限
+        const ratio = this.getVolumeRatio();
+        const perceptual = Math.pow(ratio, 1.6);
+        return 0.12 + (0.88 * perceptual);
     }
 
     getHtmlAudioVolume() {
-        // 20%で0.4、100%で1.0（2.5倍相当）
-        return 0.4 + ((this.volumeLevel - 20) * 0.6) / 80;
+        // HTMLAudio側も同じカーブで統一
+        const ratio = this.getVolumeRatio();
+        const perceptual = Math.pow(ratio, 1.6);
+        return 0.12 + (0.88 * perceptual);
     }
 
     applyVolumeSetting() {
@@ -530,6 +539,7 @@ class TiravaMetronome {
         const clickSamples = Math.floor(sampleRate * tone.clickSec);
         const freq = tone.freq;
         const fadeSamples = Math.max(8, Math.floor(sampleRate * 0.0005)); // 0.5ms
+        const peakInt16 = 14000; // ヘッドルームを確保して歪みを回避
 
         const pcm = new Int16Array(totalSamples);
         for (let i = 0; i < clickSamples; i++) {
@@ -544,7 +554,7 @@ class TiravaMetronome {
                 env = (clickSamples - i - 1) / fadeSamples;
             }
 
-            pcm[i] = Math.max(-28000, Math.min(28000, Math.round(sample * env * 28000)));
+            pcm[i] = Math.max(-peakInt16, Math.min(peakInt16, Math.round(sample * env * peakInt16)));
         }
 
         // 先頭・末尾をゼロに固定してループ接続時の段差を最小化
@@ -597,6 +607,7 @@ class TiravaMetronome {
         const clickSamples = Math.min(bufferLength, Math.floor(sampleRate * tone.clickSec));
         const freq = tone.freq;
         const fadeSamples = Math.max(8, Math.floor(sampleRate * 0.0005));
+        const sourceAmp = 0.55; // 元波形を抑えてクリップ耐性を上げる
         for (let i = 0; i < clickSamples; i++) {
             const phase = (2 * Math.PI * freq * i) / sampleRate;
             let env = 1;
@@ -605,7 +616,7 @@ class TiravaMetronome {
             } else if (i >= clickSamples - fadeSamples) {
                 env = (clickSamples - i - 1) / fadeSamples;
             }
-            data[i] = this.getWaveSample(tone.wave, phase) * env;
+            data[i] = this.getWaveSample(tone.wave, phase) * env * sourceAmp;
         }
 
         return buffer;
