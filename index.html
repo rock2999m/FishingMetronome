@@ -42,14 +42,27 @@
 
         <!-- 入力セクション -->
         <div class="input-section">
+            <div class="mode-section">
+                <div class="mode-tabs">
+                    <button id="fixedModeBtn" class="mode-tab-btn active" data-mode="fixed">一定RPM</button>
+                    <button id="variableModeBtn" class="mode-tab-btn" data-mode="variable">可変RPM</button>
+                </div>
+            </div>
+
             <div class="input-row">
                 <div class="input-group">
                     <label for="reelRetrieve">巻き取り量 (cm)</label>
                     <input type="number" id="reelRetrieve" value="75" min="10" max="200" step="5">
                 </div>
+            </div>
+            <div class="input-row-target">
                 <div class="input-group">
                     <label for="targetSpeed">目標速度 (m/s)</label>
-                    <input type="number" id="targetSpeed" value="1.0" min="0" max="5" step="0.1">
+                    <div class="boat-speed-control">
+                        <button id="targetSpeedDecreaseBtn" class="btn btn-speed-control">-</button>
+                        <input type="number" id="targetSpeed" value="1.0" min="0" max="5" step="0.1">
+                        <button id="targetSpeedIncreaseBtn" class="btn btn-speed-control">+</button>
+                    </div>
                 </div>
             </div>
             <div class="input-row-boat">
@@ -61,15 +74,6 @@
                         <button id="boatSpeedIncreaseBtn" class="btn btn-speed-control">+</button>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- スライダー -->
-        <div class="slider-section">
-            <input type="range" id="rpmSlider" min="30" max="200" value="60" class="rpm-slider">
-            <div class="slider-labels">
-                <span>30 RPM</span>
-                <span>200 RPM</span>
             </div>
         </div>
 
@@ -88,7 +92,7 @@
 
     <!-- フッター -->
     <footer class="footer">
-        <span id="versionInfo">Fishing Metronome v2.0.0</span>
+        <span id="versionInfo">Fishing Metronome v2.1.0</span>
     </footer>
 
     <!-- Tipsモーダル -->

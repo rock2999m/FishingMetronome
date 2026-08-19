@@ -12,6 +12,7 @@ class TiravaMetronome {
         this.targetSpeed = 1.0; // m/s
         this.indicatorMinSpeed = 0.2; // m/s
         this.indicatorMaxSpeed = 3.0; // m/s
+        this.controlMode = 'fixed'; // fixed | variable
         this.volumeLevel = 20; // 20%を現行基準
         this.audioEngine = 'webaudio'; // webaudio | htmlaudio
         this.toneVariant = 'sharp'; // sharp | soft | beep | wood | bell
@@ -37,15 +38,18 @@ class TiravaMetronome {
         this.elements = {
             currentRpm: document.getElementById('currentRpm'),
             lureSpeed: document.getElementById('lureSpeed'),
-            rpmSlider: document.getElementById('rpmSlider'),
             playBtn: document.getElementById('playBtn'),
             increaseBtn: document.getElementById('increaseBtn'),
             decreaseBtn: document.getElementById('decreaseBtn'),
+            fixedModeBtn: document.getElementById('fixedModeBtn'),
+            variableModeBtn: document.getElementById('variableModeBtn'),
             reelRetrieve: document.getElementById('reelRetrieve'),
             boatSpeed: document.getElementById('boatSpeed'),
             boatSpeedIncreaseBtn: document.getElementById('boatSpeedIncreaseBtn'),
             boatSpeedDecreaseBtn: document.getElementById('boatSpeedDecreaseBtn'),
             targetSpeed: document.getElementById('targetSpeed'),
+            targetSpeedIncreaseBtn: document.getElementById('targetSpeedIncreaseBtn'),
+            targetSpeedDecreaseBtn: document.getElementById('targetSpeedDecreaseBtn'),
             presetName: document.getElementById('presetName'),
             savePresetBtn: document.getElementById('savePresetBtn'),
             presetList: document.getElementById('presetList'),
@@ -79,6 +83,7 @@ class TiravaMetronome {
         this.attachTipsListeners();
         this.loadPresets();
         this.loadIndicatorSettings();
+        this.loadControlMode();
         this.loadAudioSettings();
         this.updateDisplay();
         this.requestWakeLock();
@@ -180,19 +185,9 @@ class TiravaMetronome {
         // 再生・停止
         this.elements.playBtn.addEventListener('click', () => this.togglePlayback());
 
-        // RPM制御
-        this.elements.rpmSlider.addEventListener('input', (e) => {
-            this.currentRpm = parseInt(e.target.value);
-            this.updateDisplay();
-            if (this.isPlaying) {
-                if (this.audioEngine === 'htmlaudio') {
-                    this.elements.audioElement.playbackRate = this.currentRpm / 60;
-                } else {
-                    this.startClickLoop();
-                }
-                this.updateMediaSession();
-            }
-        });
+        // モード切り替え
+        this.elements.fixedModeBtn.addEventListener('click', () => this.setControlMode('fixed'));
+        this.elements.variableModeBtn.addEventListener('click', () => this.setControlMode('variable'));
 
         this.elements.increaseBtn.addEventListener('click', () => this.adjustRpm(5));
         this.elements.decreaseBtn.addEventListener('click', () => this.adjustRpm(-5));
@@ -201,21 +196,32 @@ class TiravaMetronome {
         // 船速制御
         this.elements.boatSpeedIncreaseBtn.addEventListener('click', () => this.adjustBoatSpeed(0.1));
         this.elements.boatSpeedDecreaseBtn.addEventListener('click', () => this.adjustBoatSpeed(-0.1));
+        this.elements.targetSpeedIncreaseBtn.addEventListener('click', () => this.adjustTargetSpeed(0.1));
+        this.elements.targetSpeedDecreaseBtn.addEventListener('click', () => this.adjustTargetSpeed(-0.1));
 
         // 入力値変更
         this.elements.reelRetrieve.addEventListener('change', (e) => {
             this.reelRetrieve = parseFloat(e.target.value) || 75;
+            if (this.controlMode === 'variable') {
+                this.autoAdjustRpm('巻き取り量変更');
+            }
             this.updateDisplay();
         });
 
         this.elements.boatSpeed.addEventListener('change', (e) => {
             const kmh = parseFloat(e.target.value) || 0;
             this.boatSpeed = kmh / 3.6; // km/h -> m/s
+            if (this.controlMode === 'variable') {
+                this.autoAdjustRpm('船速変更');
+            }
             this.updateDisplay();
         });
 
         this.elements.targetSpeed.addEventListener('change', (e) => {
             this.targetSpeed = parseFloat(e.target.value) || 1.0;
+            if (this.controlMode === 'variable') {
+                this.autoAdjustRpm('目標速度変更');
+            }
             this.updateDisplay();
         });
 
@@ -334,6 +340,53 @@ class TiravaMetronome {
         this.elements.indicatorMin.value = 0.2;
         this.elements.indicatorMax.value = 3.0;
         this.saveIndicatorSettings();
+    }
+
+    loadControlMode() {
+        const savedMode = localStorage.getItem('controlMode');
+        const mode = savedMode === 'variable' ? 'variable' : 'fixed';
+        this.setControlMode(mode, { fromLoad: true });
+    }
+
+    setControlMode(mode, options = {}) {
+        this.controlMode = mode === 'variable' ? 'variable' : 'fixed';
+        localStorage.setItem('controlMode', this.controlMode);
+        document.body.classList.toggle('mode-fixed', this.controlMode === 'fixed');
+        document.body.classList.toggle('mode-variable', this.controlMode === 'variable');
+
+        this.elements.fixedModeBtn.classList.toggle('active', this.controlMode === 'fixed');
+        this.elements.variableModeBtn.classList.toggle('active', this.controlMode === 'variable');
+
+        if (this.controlMode === 'variable' && !options.fromLoad) {
+            // モード切り替え時は現在の実ルアー速度を基準に固定
+            this.targetSpeed = this.calculateLureSpeed();
+            this.elements.targetSpeed.value = this.targetSpeed.toFixed(2);
+            this.autoAdjustRpm('モード切替');
+        }
+
+        if (this.isPlaying) {
+            this.disableInputs(true);
+        }
+
+        this.updateStatus(this.controlMode === 'fixed' ? '一定RPMモード' : '可変RPMモード');
+        this.updateDisplay();
+    }
+
+    autoAdjustRpm(reason = '') {
+        const rpm = this.calculateRpmFromTargetSpeed();
+        if (rpm !== null) {
+            this.currentRpm = rpm;
+            if (this.isPlaying) {
+                if (this.audioEngine === 'htmlaudio') {
+                    this.elements.audioElement.playbackRate = this.currentRpm / 60;
+                } else {
+                    this.startClickLoop();
+                }
+            }
+            if (reason) {
+                this.updateStatus(`可変RPM自動調整: ${this.currentRpm} RPM (${reason})`);
+            }
+        }
     }
 
     loadAudioSettings() {
@@ -463,6 +516,8 @@ class TiravaMetronome {
         this.isPlaying = true;
         this.elements.playBtn.textContent = '停止';
         this.elements.playBtn.style.backgroundColor = '#FF6B6B';
+        this.elements.playBtn.style.borderColor = '#FF6B6B';
+        this.elements.playBtn.style.boxShadow = '0 0 10px rgba(255, 107, 107, 0.45)';
         
         // 入力フィールドを無効化
         this.disableInputs(true);
@@ -480,7 +535,9 @@ class TiravaMetronome {
 
         this.isPlaying = false;
         this.elements.playBtn.textContent = '再生';
-        this.elements.playBtn.style.backgroundColor = '#FFD700';
+        this.elements.playBtn.style.backgroundColor = '';
+        this.elements.playBtn.style.borderColor = '';
+        this.elements.playBtn.style.boxShadow = '';
 
         // エンジン別に停止
         this.stopActiveEngine();
@@ -713,7 +770,7 @@ class TiravaMetronome {
     // ========================================
     adjustRpm(delta) {
         this.currentRpm = Math.max(30, Math.min(200, this.currentRpm + delta));
-        this.elements.rpmSlider.value = this.currentRpm;
+
         this.updateDisplay();
         
         if (this.isPlaying) {
@@ -731,8 +788,24 @@ class TiravaMetronome {
         const deltaMs = deltaKmh / 3.6;
         const newBoatSpeedMs = Math.max(0, Math.min(5, this.boatSpeed + deltaMs));
         this.boatSpeed = Math.round(newBoatSpeedMs * 100) / 100; // m/s
+
+        if (this.controlMode === 'variable') {
+            this.autoAdjustRpm('船速ボタン変更');
+        }
+
         const boatSpeedKmh = Math.round(this.boatSpeed * 3.6 * 10) / 10; // km/h に変換して表示
         this.elements.boatSpeed.value = boatSpeedKmh;
+        this.updateDisplay();
+    }
+
+    adjustTargetSpeed(delta) {
+        const newTargetSpeed = Math.max(0, Math.min(5, this.targetSpeed + delta));
+        this.targetSpeed = Math.round(newTargetSpeed * 10) / 10;
+
+        if (this.controlMode === 'variable') {
+            this.autoAdjustRpm('目標速度ボタン変更');
+        }
+
         this.updateDisplay();
     }
 
@@ -771,15 +844,21 @@ class TiravaMetronome {
     }
 
     setRpmFromTargetSpeed() {
+        if (this.controlMode === 'variable') {
+            // 可変RPMモード: 目標速度ベースで船速を加味し、再生中も即反映
+            this.autoAdjustRpm('セット');
+            this.updateDisplay();
+            return;
+        }
+
         if (this.isPlaying) {
             this.updateStatus('再生中はセットできません');
             return;
         }
-        
+
         const rpm = this.calculateRpmFromTargetSpeed();
         if (rpm !== null) {
             this.currentRpm = rpm;
-            this.elements.rpmSlider.value = this.currentRpm;
             this.updateDisplay();
             this.updateStatus(`RPMをセットしました: ${this.currentRpm} RPM`);
         }
@@ -791,11 +870,10 @@ class TiravaMetronome {
         const lureSpeed = this.calculateLureSpeed();
         this.elements.lureSpeed.textContent = lureSpeed.toFixed(2);
         
-        this.elements.rpmSlider.value = this.currentRpm;
-        
         // 船速をkm/hで表示
         const boatSpeedKmh = Math.round(this.boatSpeed * 3.6 * 10) / 10;
         this.elements.boatSpeed.value = boatSpeedKmh;
+        this.elements.targetSpeed.value = this.targetSpeed.toFixed(1);
 
         // インジケーター目盛り表示を設定値に同期
         this.elements.indicatorMinLabel.textContent = this.indicatorMinSpeed.toFixed(1);
@@ -828,9 +906,12 @@ class TiravaMetronome {
 
     disableInputs(disabled) {
         this.elements.reelRetrieve.disabled = disabled;
-        this.elements.targetSpeed.disabled = disabled;
+        this.elements.targetSpeed.disabled = this.controlMode === 'fixed' ? disabled : false;
+        this.elements.targetSpeedIncreaseBtn.disabled = this.controlMode === 'fixed' ? disabled : false;
+        this.elements.targetSpeedDecreaseBtn.disabled = this.controlMode === 'fixed' ? disabled : false;
         this.elements.savePresetBtn.disabled = disabled;
         this.elements.presetName.disabled = disabled;
+        this.elements.setBtn.disabled = this.controlMode === 'fixed' ? disabled : false;
     }
 
     // ========================================
@@ -849,6 +930,7 @@ class TiravaMetronome {
             reelRetrieve: this.reelRetrieve,
             boatSpeed: this.boatSpeed,
             targetSpeed: this.targetSpeed,
+            controlMode: this.controlMode,
             timestamp: Date.now()
         };
 
@@ -897,7 +979,11 @@ class TiravaMetronome {
         this.boatSpeed = preset.boatSpeed;
         this.targetSpeed = preset.targetSpeed;
 
-        this.elements.rpmSlider.value = this.currentRpm;
+        this.setControlMode(preset.controlMode === 'variable' ? 'variable' : 'fixed', { fromLoad: true });
+        if (this.controlMode === 'variable') {
+            this.autoAdjustRpm('プリセット読込');
+        }
+
         this.elements.reelRetrieve.value = this.reelRetrieve;
         this.elements.boatSpeed.value = this.boatSpeed;
         this.elements.targetSpeed.value = this.targetSpeed;
